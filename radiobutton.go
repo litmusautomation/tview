@@ -171,69 +171,6 @@ func (r *RadioButtons) InputHandler() func(event *tcell.EventKey, setFocus func(
 	return r.Box.InputHandler()
 }
 
-// InputHandler returns the handler for this primitive.
-func (r *RadioButtons) defaultInputHandler() func(event *tcell.EventKey, setFocus func(p Primitive)) {
-	return r.WrapInputHandler(func(event *tcell.EventKey, setFocus func(p Primitive)) {
-		parent := r
-		r = parent.joinElements[parent.currentElement]
-
-		switch key := event.Key(); key {
-		case tcell.KeyUp, tcell.KeyLeft:
-			r.currentOption--
-			if r.currentOption < 0 {
-				if len(parent.joinElements) > 1 {
-					parent.currentElement--
-					if parent.currentElement < 0 {
-						parent.currentElement = len(parent.joinElements) - 1
-					}
-					nextElement := parent.joinElements[parent.currentElement]
-					setFocus(nextElement)
-					nextElement.currentOption = len(nextElement.options) - 1
-					break
-				}
-				r.currentOption = len(r.options) - 1 - int(math.Mod(float64(len(r.options)), float64(r.currentOption)))
-			}
-			if r.changed != nil {
-				r.changed(r.options[r.currentOption])
-			}
-		case tcell.KeyDown, tcell.KeyRight:
-			r.currentOption++
-			if r.currentOption >= len(r.options) {
-				if len(parent.joinElements) > 1 {
-					parent.currentElement++
-					if parent.currentElement >= len(parent.joinElements) {
-						parent.currentElement = 0
-					}
-					nextElement := parent.joinElements[parent.currentElement]
-					setFocus(nextElement)
-					nextElement.currentOption = 0
-					break
-				}
-				r.currentOption = int(math.Mod(float64(len(r.options)), float64(r.currentOption)))
-			}
-			if r.changed != nil {
-				r.changed(r.options[r.currentOption])
-			}
-		case tcell.KeyEnter, tcell.KeyRune: // We're done.
-			for index, element := range parent.joinElements {
-				if parent.currentElement != index {
-					element.currentOption = -1
-				}
-			}
-			if r.changed != nil {
-				r.changed(r.options[r.currentOption])
-			}
-		case tcell.KeyTab, tcell.KeyBacktab, tcell.KeyEscape: // We're done.
-			if parent.done != nil {
-				parent.done(key)
-			}
-			if parent.finished != nil {
-				parent.finished(key)
-			}
-		}
-	})
-}
-
 // GetRect returns the current position of the rectangle, x, y, width, and
 // height.
 func (r *RadioButtons) GetRect() (int, int, int, int) {
@@ -254,7 +191,7 @@ func (r *RadioButtons) GetRect() (int, int, int, int) {
 
 // GetLabelWidth returns label width.
 func (r *RadioButtons) GetLabelWidth() int {
-	return StringWidth(strings.Replace(r.subLabel+r.label, "%s", "", -1))
+	return StringWidth(strings.Replace(r.subLabel+r.label, "%s", "", -1)) + 1
 }
 
 // GetFieldWidth returns field width.
@@ -408,10 +345,7 @@ func (r *RadioButtons) SetHorizontal(horizontal bool) *RadioButtons {
 func (r *RadioButtons) SetCurrentOptionByName(name string) *RadioButtons {
 	for i := 0; i < len(r.options); i++ {
 		if r.options[i].Name == name {
-			r.currentOption = i
-			if r.changed != nil {
-				r.changed(r.options[r.currentOption])
-			}
+			r.SetCurrentOption(i)
 			break
 		}
 	}
@@ -421,10 +355,21 @@ func (r *RadioButtons) SetCurrentOptionByName(name string) *RadioButtons {
 // SetCurrentOption sets the index of the currently selected option. This may
 // be a negative value to indicate that no option is currently selected.
 func (r *RadioButtons) SetCurrentOption(index int) *RadioButtons {
-	r.currentOption = index
-	if r.changed != nil {
-		r.changed(r.options[r.currentOption])
+	offset := 0
+	for i, element := range r.joinElements {
+		if index < len(element.options)+offset && index >= offset {
+			r.currentElement = i
+			r = r.joinElements[r.currentElement]
+			element.currentOption = index - offset
+			if r.changed != nil {
+				r.changed(r.options[r.currentOption])
+			}
+		} else {
+			element.currentOption = -1
+		}
+		offset += len(element.options)
 	}
+
 	return r
 }
 
@@ -501,6 +446,7 @@ func (r *RadioButtons) Draw(screen tcell.Screen) {
 			x += labelWidth
 		}
 	}
+	x++
 
 	var lineWidth int
 	for index, option := range r.options {
@@ -547,4 +493,93 @@ func (r *RadioButtons) Draw(screen tcell.Screen) {
 			lineWidth += StringWidth(line) + (r.itemPadding + 1)
 		}
 	}
+}
+
+// InputHandler returns the handler for this primitive.
+func (r *RadioButtons) defaultInputHandler() func(event *tcell.EventKey, setFocus func(p Primitive)) {
+	return r.WrapInputHandler(func(event *tcell.EventKey, setFocus func(p Primitive)) {
+		parent := r
+		r = parent.joinElements[parent.currentElement]
+
+		var (
+			previous = func() {
+				r.currentOption--
+				if r.currentOption < 0 {
+					if len(parent.joinElements) > 1 {
+						parent.currentElement--
+						if parent.currentElement < 0 {
+							parent.currentElement = len(parent.joinElements) - 1
+						}
+						nextElement := parent.joinElements[parent.currentElement]
+						setFocus(nextElement)
+						nextElement.currentOption = len(nextElement.options) - 1
+						return
+					}
+					r.currentOption = len(r.options) - 1 - int(math.Mod(float64(len(r.options)), float64(r.currentOption)))
+				}
+				if r.changed != nil {
+					r.changed(r.options[r.currentOption])
+				}
+			}
+
+			next = func() {
+				r.currentOption++
+				if r.currentOption >= len(r.options) {
+					if len(parent.joinElements) > 1 {
+						parent.currentElement++
+						if parent.currentElement >= len(parent.joinElements) {
+							parent.currentElement = 0
+						}
+						nextElement := parent.joinElements[parent.currentElement]
+						setFocus(nextElement)
+						nextElement.currentOption = 0
+						return
+					}
+					r.currentOption = int(math.Mod(float64(len(r.options)), float64(r.currentOption)))
+				}
+				if r.changed != nil {
+					r.changed(r.options[r.currentOption])
+				}
+			}
+
+			done = func(key tcell.Key) {
+				if parent.done != nil {
+					parent.done(key)
+				}
+				if parent.finished != nil {
+					parent.finished(key)
+				}
+			}
+		)
+
+		switch key := event.Key(); key {
+		case tcell.KeyUp:
+			if r.horizontal {
+				done(key)
+				break
+			}
+			previous()
+		case tcell.KeyDown:
+			if r.horizontal {
+				done(key)
+				break
+			}
+			next()
+		case tcell.KeyLeft:
+			previous()
+		case tcell.KeyRight:
+			next()
+		// case tcell.KeyEnter, tcell.KeyRune: // We're done.
+		// 	for index, element := range parent.joinElements {
+		// 		if parent.currentElement != index {
+		// 			element.currentOption = -1
+		// 		}
+		// 	}
+		// 	if r.changed != nil {
+		// 		r.changed(r.options[r.currentOption])
+		// 	}
+		case tcell.KeyTab, tcell.KeyBacktab, tcell.KeyEscape, tcell.KeyEnter: // We're done.
+			done(key)
+		}
+	})
 }

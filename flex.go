@@ -100,6 +100,12 @@ func (f *Flex) RemoveItem(p Primitive) *Flex {
 	return f
 }
 
+// RemoveItems removes all items
+func (f *Flex) RemoveItems() *Flex {
+	f.items = nil
+	return f
+}
+
 // Draw draws this primitive onto the screen.
 func (f *Flex) Draw(screen tcell.Screen) {
 	f.Box.Draw(screen)

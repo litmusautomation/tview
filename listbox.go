@@ -14,6 +14,7 @@ import (
 
 // listBoxItem represents one item in a ListBox.
 type listBoxItem struct {
+	Name          string
 	MainText      string // The main text of the list item.
 	SecondaryText string // A secondary text to be shown underneath the main text.
 	Shortcut      rune   // The key to select the list item directly, 0 if there is no shortcut.
@@ -136,8 +137,20 @@ func (l *ListBox) SetCurrentItemByText(text string) *ListBox {
 	return l
 }
 
-// GetCurrentItem returns the index of the currently selected list item.
-func (l *ListBox) GetCurrentItem() int {
+// SetCurrentItemByName sets the currently selected item by its name. This triggers
+// a "changed" event.
+func (l *ListBox) SetCurrentItemByName(text string) *ListBox {
+	for i := 0; i < len(l.items); i++ {
+		if l.items[i].Name == text {
+			l.SetCurrentItem(i)
+			break
+		}
+	}
+	return l
+}
+
+// GetCurrentItemIndex returns the index of the currently selected list item.
+func (l *ListBox) GetCurrentItemIndex() int {
 	return l.currentItem
 }
 
@@ -147,6 +160,14 @@ func (l *ListBox) GetCurrentItemText() string {
 		return ""
 	}
 	return l.items[l.currentItem].MainText
+}
+
+// GetCurrentItemName returns the selected name
+func (l *ListBox) GetCurrentItemName() string {
+	if len(l.items) == 0 {
+		return ""
+	}
+	return l.items[l.currentItem].Name
 }
 
 // SetMainTextColor sets the color of the items' main text.
@@ -223,12 +244,11 @@ func (l *ListBox) SetDoneFunc(handler func(tcell.Key)) *ListBox {
 // The "selected" callback will be invoked when the user selects the item. You
 // may provide nil if no such item is needed or if all events are handled
 // through the selected callback set with SetSelectedFunc().
-func (l *ListBox) AddItem(mainText, secondaryText string, shortcut rune, selected func()) *ListBox {
+func (l *ListBox) AddItem(name, title string, selected func()) *ListBox {
 	l.items = append(l.items, &listBoxItem{
-		MainText:      mainText,
-		SecondaryText: secondaryText,
-		Shortcut:      shortcut,
-		Selected:      selected,
+		Name:     name,
+		MainText: title,
+		Selected: selected,
 	})
 	if len(l.items) == 1 && l.changed != nil {
 		item := l.items[0]
@@ -296,18 +316,17 @@ func (l *ListBox) Draw(screen tcell.Screen) {
 
 		// Background color of selected text.
 		if index == l.currentItem {
-			textWidth := StringWidth(item.MainText)
-			for bx := 0; bx < textWidth && bx < width; bx++ {
+			w := StringWidth(item.MainText)
+			if l.focus.HasFocus() {
+				w = l.fieldWidth
+			}
+			for bx := 0; bx < w && bx < width; bx++ {
 				m, c, style, _ := screen.GetContent(x+bx, y)
 				fg, _, _ := style.Decompose()
 				if fg == l.mainTextColor {
 					fg = l.selectedTextColor
 				}
-				if l.focus.HasFocus() {
-					style = style.Background(l.fieldBackgroundColor).Foreground(fg)
-				} else {
-					style = style.Background(l.fieldTextColor).Foreground(l.fieldBackgroundColor).Underline(true)
-				}
+				style = style.Background(l.fieldBackgroundColor).Foreground(fg)
 				screen.SetContent(x+bx, y, m, c, style)
 			}
 		}
@@ -332,7 +351,7 @@ func (l *ListBox) InputHandler() func(event *tcell.EventKey, setFocus func(p Pri
 		previousItem := l.currentItem
 
 		switch key := event.Key(); key {
-		case tcell.KeyTab, tcell.KeyBacktab: // We're done.
+		case tcell.KeyTab, tcell.KeyBacktab, tcell.KeyEnter: // We're done.
 			if l.done != nil {
 				l.done(key)
 			}
@@ -370,17 +389,6 @@ func (l *ListBox) InputHandler() func(event *tcell.EventKey, setFocus func(p Pri
 			} else {
 				l.currentItem -= height
 				l.offset = l.currentItem
-			}
-		case tcell.KeyEnter:
-			if len(l.items) == 0 {
-				break
-			}
-			item := l.items[l.currentItem]
-			if item.Selected != nil {
-				item.Selected()
-			}
-			if l.selected != nil {
-				l.selected(l.currentItem, item.MainText, item.SecondaryText, item.Shortcut)
 			}
 		case tcell.KeyEscape:
 			if l.done != nil {

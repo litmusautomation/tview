@@ -58,6 +58,8 @@ type Form struct {
 	// The buttons of the form.
 	buttons []*Button
 
+	activeButtons []*Button
+
 	// If set to true, instead of position items and buttons from top to bottom,
 	// they are positioned from left to right.
 	horizontal bool
@@ -67,6 +69,8 @@ type Form struct {
 
 	buttonsPaddingTop int
 	buttonsIndent     int
+
+	lastItem, lastButton int
 
 	// The number of empty rows between items.
 	itemPadding int
@@ -124,6 +128,17 @@ func NewForm() *Form {
 	f.focus = f
 
 	return f
+}
+
+// Buttons returns active buttons
+func (f *Form) Buttons() []*Button {
+	var buttons []*Button
+	for i := 0; i < len(f.buttons); i++ {
+		if !f.buttons[i].GetHidden() {
+			buttons = append(buttons, f.buttons[i])
+		}
+	}
+	return buttons
 }
 
 // SetAlign sets the content alignment within the flex. This must be
@@ -279,6 +294,14 @@ func (f *Form) AddButton(label string, selected func()) *Form {
 	return f
 }
 
+// HiddenButton hides button by index
+func (f *Form) HiddenButton(index int, state bool) *Form {
+	if len(f.buttons) > index {
+		f.buttons[index].SetHidden(state)
+	}
+	return f
+}
+
 // Clear removes all input elements from the form, including the buttons if
 // specified.
 func (f *Form) Clear(includeButtons bool) *Form {
@@ -287,6 +310,12 @@ func (f *Form) Clear(includeButtons bool) *Form {
 		f.buttons = nil
 	}
 	f.focusedElement = 0
+	return f
+}
+
+// ClearButtons removes all buttons.
+func (f *Form) ClearButtons() *Form {
+	f.buttons = nil
 	return f
 }
 
@@ -308,6 +337,7 @@ func (f *Form) AddFormItem(item FormItem) *Form {
 func (f *Form) AddFormItemWithColumn(item FormItem, column int) *Form {
 	f.items = append(f.items, item)
 	f.itemsColumn = append(f.itemsColumn, column)
+	f.lastButton = len(f.items)
 	return f
 }
 
@@ -366,7 +396,7 @@ func (f *Form) GetRect() (int, int, int, int) {
 	if height == 0 {
 		height = f.getMaxHeightColumn()
 
-		if len(f.buttons) > 0 {
+		if len(f.Buttons()) > 0 {
 			height += 1 + f.buttonsPaddingTop
 		}
 
@@ -484,15 +514,15 @@ func (f *Form) Draw(screen tcell.Screen) {
 	}
 
 	// Calculate positions of form items.
-	positions := make([]struct{ x, y, width, height int }, len(f.items)+len(f.buttons))
+	positions := make([]struct{ x, y, width, height int }, len(f.items)+len(f.Buttons()))
 	var focusedPosition struct{ x, y, width, height int }
 	for index, item := range f.items {
 		column := f.itemsColumn[index]
 		x := colX[column]
 		y := colY[column]
 		_, _, leftPadding, rightPadding := item.GetBorderPadding()
-		labelWidth := item.GetLabelWidth() + leftPadding
-		fieldWidth := item.GetFieldWidth() + rightPadding
+		labelWidth := item.GetLabelWidth()
+		fieldWidth := item.GetFieldWidth()
 		var itemWidth int
 		if f.horizontal {
 			if fieldWidth == 0 {
@@ -501,12 +531,11 @@ func (f *Form) Draw(screen tcell.Screen) {
 			itemWidth = labelWidth + fieldWidth
 		} else {
 			itemWidth = boxWidth
-			fieldWidth := item.GetFieldWidth()
 			// Implement alignment of field
 			switch item.GetFieldAlign() {
 			case AlignCenter:
 				labelWidth = maxColLabelWidth[column] - leftPadding
-				fieldWidth = maxColWidth[column] - labelWidth - rightPadding
+				fieldWidth = maxColWidth[column] - leftPadding - labelWidth - rightPadding
 			case AlignRight:
 				labelWidth = maxColWidth[column] - leftPadding - fieldWidth - rightPadding
 			case AlignLeft:
@@ -554,9 +583,9 @@ func (f *Form) Draw(screen tcell.Screen) {
 	y = topLimit + f.getMaxHeightColumn()
 
 	// How wide are the buttons?
-	buttonWidths := make([]int, len(f.buttons))
+	buttonWidths := make([]int, len(f.Buttons()))
 	buttonsWidth := 0
-	for index, button := range f.buttons {
+	for index, button := range f.Buttons() {
 		w := StringWidth(button.GetLabel()) + 4
 		buttonWidths[index] = w
 		buttonsWidth += w + f.buttonsIndent
@@ -578,12 +607,12 @@ func (f *Form) Draw(screen tcell.Screen) {
 
 	}
 
-	if len(f.buttons) > 0 {
+	if len(f.Buttons()) > 0 {
 		y += f.buttonsPaddingTop
 	}
 
 	// Calculate positions of buttons.
-	for index, button := range f.buttons {
+	for index, button := range f.Buttons() {
 		space := rightLimit - x
 		buttonWidth := buttonWidths[index]
 		if f.horizontal {
@@ -648,7 +677,7 @@ func (f *Form) Draw(screen tcell.Screen) {
 	}
 
 	// Draw buttons.
-	for index, button := range f.buttons {
+	for index, button := range f.Buttons() {
 		// Set position.
 		buttonIndex := index + len(f.items)
 		y := positions[buttonIndex].y - offset
@@ -668,37 +697,84 @@ func (f *Form) Draw(screen tcell.Screen) {
 // ResetFocus sets focus on the first element
 func (f *Form) ResetFocus() {
 	f.focusedElement = 0
+	f.lastItem = 0
+	f.lastButton = len(f.items)
 }
 
 // Focus is called by the application when the primitive receives focus.
 func (f *Form) Focus(delegate func(p Primitive)) {
-	if len(f.items)+len(f.buttons) == 0 {
+	if len(f.items)+len(f.Buttons()) == 0 {
 		return
 	}
 
 	// Hand on the focus to one of our child elements.
-	if f.focusedElement < 0 || f.focusedElement >= len(f.items)+len(f.buttons) {
+	if f.focusedElement < 0 || f.focusedElement >= len(f.items)+len(f.Buttons()) {
 		f.focusedElement = 0
 	}
 
-	itemHandler := func(key tcell.Key) {
-		switch key {
-		case tcell.KeyTab, tcell.KeyEnter:
-			previous := f.focusedElement
-			for {
-				f.focusedElement++
-				if f.focusedElement < len(f.items) && f.items[previous].GetID() == f.items[f.focusedElement].GetID() {
+	var (
+		nextStep = func(indexes ...int) {
+			for i := 1; i < len(indexes); i++ {
+				if indexes[i-1] < indexes[i] && f.focusedElement < indexes[i] || indexes[i-1] > indexes[i] && f.focusedElement > indexes[i] {
+					indexes = append(indexes[i:], indexes[0:i]...)
+					break
+				}
+			}
+
+			current := f.focusedElement
+			for i := 0; i < len(indexes); i++ {
+				if indexes[i] >= len(f.items)+len(f.Buttons()) {
 					continue
 				}
-				break
+				f.focusedElement = indexes[i]
+				if f.focusedElement < len(f.items) && current < len(f.items) && f.items[current].GetID() == f.items[f.focusedElement].GetID() {
+					continue
+				}
+				if f.focusedElement >= len(f.items) && current >= len(f.items) && f.Buttons()[current-len(f.items)].GetID() == f.Buttons()[f.focusedElement-len(f.items)].GetID() {
+					continue
+				}
+
+				f.Focus(delegate)
+				if f.focusedElement < len(f.items) && f.items[f.focusedElement].GetFocusable().HasFocus() {
+					f.lastItem = f.focusedElement
+					break
+				}
+				if f.focusedElement >= len(f.items) && f.Buttons()[len(f.Buttons())-1-(f.focusedElement-len(f.items))].GetFocusable().HasFocus() {
+					f.lastButton = f.focusedElement
+					break
+				}
 			}
-			f.Focus(delegate)
+		}
+
+		makeRange = func(start, end int) []int {
+			var a []int
+			if start < end {
+				a = make([]int, end-start+1)
+				for i := range a {
+					a[i] = start + i
+				}
+			} else {
+				a = make([]int, start-end+1)
+				for i := range a {
+					a[i] = start - i
+				}
+			}
+			return a
+		}
+	)
+
+	itemHandler := func(key tcell.Key) {
+		switch key {
+		case tcell.KeyTab:
+			nextStep(makeRange(0, len(f.items))...)
 		case tcell.KeyBacktab:
-			f.focusedElement--
-			if f.focusedElement < 0 {
-				f.focusedElement = len(f.items) + len(f.buttons) - 1
-			}
-			f.Focus(delegate)
+			nextStep(makeRange(len(f.items), 0)...)
+		case tcell.KeyEnter:
+			nextStep(makeRange(0, len(f.items))...)
+		case tcell.KeyUp:
+			nextStep(makeRange(len(f.items)-1, 0)...)
+		case tcell.KeyDown:
+			nextStep(makeRange(0, len(f.items)-1)...)
 		case tcell.KeyEscape:
 			if f.cancel != nil {
 				f.cancel()
@@ -711,33 +787,14 @@ func (f *Form) Focus(delegate func(p Primitive)) {
 
 	buttonHandler := func(key tcell.Key) {
 		switch key {
-		case tcell.KeyRight:
-			f.focusedElement--
-			if f.focusedElement <= len(f.items)-1 {
-				f.focusedElement = len(f.items) + len(f.buttons) - 1
-			}
-			f.Focus(delegate)
-		case tcell.KeyLeft:
-			f.focusedElement++
-			if f.focusedElement >= len(f.items)+len(f.buttons) {
-				f.focusedElement = len(f.items)
-			}
-			f.Focus(delegate)
 		case tcell.KeyTab:
-			for {
-				f.focusedElement++
-				if f.focusedElement >= len(f.items) && f.focusedElement < len(f.items)+len(f.buttons) {
-					continue
-				}
-				break
-			}
-			f.Focus(delegate)
+			nextStep(makeRange(0, len(f.items))...)
 		case tcell.KeyBacktab:
-			f.focusedElement--
-			if f.focusedElement < 0 {
-				f.focusedElement = len(f.items) + len(f.buttons) - 1
-			}
-			f.Focus(delegate)
+			nextStep(makeRange(len(f.items), 0)...)
+		case tcell.KeyUp, tcell.KeyLeft:
+			nextStep(makeRange(len(f.items), len(f.items)+len(f.Buttons())-1)...)
+		case tcell.KeyDown, tcell.KeyRight:
+			nextStep(makeRange(len(f.items)+len(f.Buttons())-1, len(f.items))...)
 		case tcell.KeyEscape:
 			if f.cancel != nil {
 				f.cancel()
@@ -756,7 +813,7 @@ func (f *Form) Focus(delegate func(p Primitive)) {
 	} else {
 		// We're selecting a button.
 		//		fmt.Println(len(f.buttons) - 1 - (f.focusedElement - len(f.items)))
-		button := f.buttons[len(f.buttons)-1-(f.focusedElement-len(f.items))]
+		button := f.Buttons()[len(f.Buttons())-1-(f.focusedElement-len(f.items))]
 		button.SetBlurFunc(buttonHandler)
 		delegate(button)
 	}
@@ -769,7 +826,7 @@ func (f *Form) HasFocus() bool {
 			return true
 		}
 	}
-	for _, button := range f.buttons {
+	for _, button := range f.Buttons() {
 		if button.focus.HasFocus() {
 			return true
 		}

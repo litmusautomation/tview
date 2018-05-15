@@ -114,6 +114,7 @@ func NewInputField() *InputField {
 // SetText sets the current text of the input field.
 func (i *InputField) SetText(text string) *InputField {
 	i.text = text
+	i.cursorPosition = len(i.text)
 	if i.changed != nil {
 		i.changed(text)
 	}
@@ -207,6 +208,7 @@ func (i *InputField) SetFormAttributes(labelWidth, fieldWidth int, labelColor, b
 	if i.labelWidth == 0 {
 		i.labelWidth = labelWidth
 	}
+
 	if !i.lockColors {
 		i.labelColor = labelColor
 		i.backgroundColor = bgColor
@@ -350,27 +352,8 @@ func (i *InputField) Draw(screen tcell.Screen) {
 		x++
 	}
 
-	// Draw input area.
-	fieldWidth := i.fieldWidth
-	if fieldWidth == 0 {
-		fieldWidth = math.MaxInt32
-	}
-	if rightLimit-x < fieldWidth {
-		fieldWidth = rightLimit - x
-	}
-	fieldStyle := tcell.StyleDefault.Background(fieldBackgroundColor)
-	for index := 0; index < fieldWidth; index++ {
-		screen.SetContent(x+index, y, ' ', nil, fieldStyle)
-	}
-
-	// Draw placeholder text.
 	text := i.text
-	if text == "" && i.placeholder != "" {
-		Print(screen, i.placeholder, x, y, fieldWidth, AlignLeft, i.placeholderTextColor)
-	}
-
 	textWidth := runewidth.StringWidth(text)
-	// Draw entered text.
 	if i.maskCharacter > 0 {
 		text = strings.Repeat(string(i.maskCharacter), utf8.RuneCountInString(i.text))
 	}
@@ -381,8 +364,29 @@ func (i *InputField) Draw(screen tcell.Screen) {
 		i.cursorPosition = textWidth
 	}
 
-	fieldWidth-- // We need one cell for the cursor.
+	// Draw input area.
+	fieldWidth := i.fieldWidth
+	if fieldWidth == 0 {
+		fieldWidth = math.MaxInt32
+	}
+	if rightLimit-x < fieldWidth {
+		fieldWidth = rightLimit - x
+	}
+	fieldStyle := tcell.StyleDefault.Background(fieldBackgroundColor)
+	for index := 0; index < fieldWidth; index++ {
+		if index == i.cursorPosition && !i.disable && i.focus.HasFocus() {
+			continue
+		}
+		screen.SetContent(x+index, y, ' ', nil, fieldStyle)
+	}
 
+	// Draw placeholder text.
+	if text == "" && i.placeholder != "" {
+		Print(screen, i.placeholder, x, y, fieldWidth, AlignLeft, i.placeholderTextColor)
+	}
+
+	fieldWidth-- // We need one cell for the cursor.
+	// Draw entered text.
 	if fieldWidth < textWidth {
 		runes := []rune(text)
 		p := len(runes)
@@ -444,6 +448,7 @@ func (i *InputField) setCursor(screen tcell.Screen) {
 		}
 		cursorIndent -= overflow
 	}
+
 	if cursorIndent < 0 {
 		cursorIndent = 0
 	}
@@ -459,6 +464,7 @@ func (i *InputField) setCursor(screen tcell.Screen) {
 	if x >= rightLimit {
 		x = rightLimit - 1
 	}
+
 	screen.ShowCursor(x, y)
 }
 
@@ -514,7 +520,7 @@ func (i *InputField) InputHandler() func(event *tcell.EventKey, setFocus func(p 
 				}
 			}
 			i.text = newText
-		case tcell.KeyEnter, tcell.KeyTab, tcell.KeyBacktab, tcell.KeyEscape: // We're done.
+		case tcell.KeyEnter, tcell.KeyTab, tcell.KeyBacktab, tcell.KeyEscape, tcell.KeyUp, tcell.KeyDown: // We're done.
 			if i.done != nil {
 				i.done(key)
 			}
@@ -535,8 +541,7 @@ func (i *InputField) InputHandler() func(event *tcell.EventKey, setFocus func(p 
 
 // Focus is called when this primitive receives focus.
 func (i *InputField) Focus(delegate func(p Primitive)) {
-	if i.disable && i.finished != nil {
-		i.finished(tcell.KeyTAB)
+	if i.disable {
 		return
 	}
 	i.hasFocus = true

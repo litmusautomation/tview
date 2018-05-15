@@ -280,7 +280,7 @@ func (c *Checkbox) InputHandler() func(event *tcell.EventKey, setFocus func(p Pr
 	return c.WrapInputHandler(func(event *tcell.EventKey, setFocus func(p Primitive)) {
 		// Process key event.
 		switch key := event.Key(); key {
-		case tcell.KeyRune, tcell.KeyEnter: // Check.
+		case tcell.KeyRune: // Check.
 			if key == tcell.KeyRune && event.Rune() != ' ' {
 				break
 			}
@@ -288,7 +288,7 @@ func (c *Checkbox) InputHandler() func(event *tcell.EventKey, setFocus func(p Pr
 			if c.changed != nil {
 				c.changed(c.checked)
 			}
-		case tcell.KeyTab, tcell.KeyBacktab, tcell.KeyEscape: // We're done.
+		case tcell.KeyTab, tcell.KeyEnter, tcell.KeyBacktab, tcell.KeyEscape, tcell.KeyDown, tcell.KeyUp: // We're done.
 			if c.done != nil {
 				c.done(key)
 			}
