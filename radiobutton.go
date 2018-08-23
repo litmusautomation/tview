@@ -139,6 +139,13 @@ func (r *RadioButtons) SetOptions(options []*RadioOption) *RadioButtons {
 	return r
 }
 
+// AddOptions addes options in the specified position
+func (r *RadioButtons) AddOptions(pos int, options ...*RadioOption) *RadioButtons {
+	options = append(options, r.options[pos:]...)
+	r.options = append(r.options[:pos], options...)
+	return r
+}
+
 // SetItemPadding sets the number of empty rows between form items for vertical
 // layouts and the number of empty cells between form items for horizontal
 // layouts.
