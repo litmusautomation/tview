@@ -19,6 +19,8 @@ type Box struct {
 	// The position of the rect.
 	x, y, width, height int
 
+	disable bool
+
 	maxWidth, maxHeight, minWidth, minHeight int
 
 	// The inner rect reserved for the box's content.
@@ -399,4 +401,15 @@ func (b *Box) HasFocus() bool {
 // GetFocusable returns the item's Focusable.
 func (b *Box) GetFocusable() Focusable {
 	return b.focus
+}
+
+// SetDisable sets an input field like disabled
+func (b *Box) SetDisable(disable bool) *Box {
+	b.disable = disable
+	return b
+}
+
+// IsDisable returns a state of the box
+func (b *Box) IsDisable() bool {
+	return b.disable
 }

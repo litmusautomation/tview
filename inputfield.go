@@ -25,8 +25,6 @@ type InputField struct {
 
 	labelFiller string
 
-	disable bool
-
 	lockColors bool
 
 	// The text that was entered.
@@ -240,12 +238,6 @@ func (i *InputField) SetFieldWidth(width int) *InputField {
 // GetFieldWidth returns this primitive's field width.
 func (i *InputField) GetFieldWidth() int {
 	return i.fieldWidth
-}
-
-// SetDisable sets an input field like disabled
-func (i *InputField) SetDisable(disable bool) *InputField {
-	i.disable = disable
-	return i
 }
 
 // SetMaskCharacter sets a character that masks user input on a screen. A value

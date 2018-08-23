@@ -696,7 +696,13 @@ func (f *Form) Draw(screen tcell.Screen) {
 
 // ResetFocus sets focus on the first element
 func (f *Form) ResetFocus() {
-	f.focusedElement = 0
+	for i, item := range f.items {
+		if item.IsDisable() {
+			continue
+		}
+		f.focusedElement = i
+		break
+	}
 	f.lastItem = 0
 	f.lastButton = len(f.items)
 }
