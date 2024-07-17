@@ -88,8 +88,8 @@ func NewDropDown() *DropDown {
 	list := NewList().ShowSecondaryText(false)
 	list.SetMainTextColor(Styles.PrimitiveBackgroundColor).
 		SetSelectedTextColor(Styles.PrimitiveBackgroundColor).
-		SetSelectedBackgroundColor(Styles.PrimaryTextColor).
-		SetBackgroundColor(Styles.MoreContrastBackgroundColor)
+		SetSelectedBackgroundColor(Styles.MoreContrastBackgroundColor).
+		SetBackgroundColor(Styles.FieldBackgroundColor)
 
 	d := &DropDown{
 		Box:                  NewBox(),
